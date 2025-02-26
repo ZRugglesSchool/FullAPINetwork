@@ -1,0 +1,19 @@
+{
+  "name": "email-service",
+  "version": "1.0.0",
+  "main": "emailConsumer.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node emailConsumer.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "kafkajs": "^2.2.4",
+    "mongoose": "^8.10.2",
+    "nodemailer": "^6.10.0"
+  }
+}

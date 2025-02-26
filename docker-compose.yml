@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    networks:
+      - myNetwork
+  
+  kafka:
+    image: wurstmeister/kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9093,PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL: PLAINTEXT
+      KAFKA_LISTENER_NAME_INSIDE_SECURITY_PROTOCOL: PLAINTEXT
+      KAFKA_LISTENER_NAME_PLAINTEXT_SECURITY_PROTOCOL: PLAINTEXT
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    networks:
+      - myNetwork
+    depends_on:
+      - zookeeper
+
+  api1:
+    build: ./nextjs-api
+    container_name: api1
+    expose:
+      - "3000"
+    networks:
+      - myNetwork
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/gameAPI
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - mongo
+      - kafka
+
+  api2:
+    build: ./nextjs-api
+    container_name: api2
+    expose:
+      - "3000"
+    networks:
+      - myNetwork
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/gameAPI
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - mongo
+      - kafka
+
+  email-service:
+    build: ./email-service
+    container_name: email-service
+    networks:
+      - myNetwork
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/gameAPI
+      - KAFKA_BROKER=kafka:9092
+      - ETHEREAL_USER=kim.collins@ethereal.email
+      - ETHEREAL_PASS=gQZnGXn7ag57995Cx5
+    depends_on:
+      - kafka
+
+  mongo:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    networks:
+      - myNetwork
+    volumes:
+      - ./data:/data/db
+
+  nginx:
+    build: ./nginx
+    container_name: nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - api1
+      - api2
+    networks:
+      - myNetwork
+
+networks:
+  myNetwork:
+    driver: bridge
