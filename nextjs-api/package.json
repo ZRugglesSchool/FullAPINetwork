@@ -10,9 +10,12 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
+    "express": "^4.21.2",
+    "express-prometheus-middleware": "^1.2.0",
     "kafkajs": "^2.2.4",
     "mongoose": "^8.10.1",
     "next": "15.1.7",
+    "prom-client": "^13.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

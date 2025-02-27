@@ -30,6 +30,8 @@ const run = async () => {
         console.log("✅ Connected to MongoDB");
 
         await consumer.subscribe({ topic: "trade-offers", fromBeginning: true });
+        await consumer.subscribe({ topic: "trade-status-updates", fromBeginning: true });
+        await consumer.subscribe({ topic: "user-changes", fromBeginning: true });
 
         const db = client.db("gameAPI");
         const usersCollection = db.collection("users"); // users collection
@@ -38,11 +40,13 @@ const run = async () => {
         await consumer.run({
             eachMessage: async ({ topic, message }) => {
                 const payload = JSON.parse(message.value.toString());
-
+                console.log("payload", payload);
                 if (topic === "trade-offers") {
                     await handleTradeOffer(payload, usersCollection, gamesCollection);
                 } else if (topic === "trade-status-updates") {
                     await handleStatusUpdate(payload, usersCollection, gamesCollection);
+                } else if (topic === "user-changes") {
+                    await handleUserChanges(payload, usersCollection);
                 }
             },
         });
@@ -181,6 +185,25 @@ async function handleStatusUpdate(updateData, usersCollection, gamesCollection) 
     }
 }
 
+async function handleUserChanges(userChange, usersCollection) {
+    const { _id, email, name } = userChange;
+
+    console.log(`📧 Processing user change for user ${_id}`);
+
+    try {
+        const formattedTime = new Date().toLocaleString();
+
+        await sendPasswordChangeEmail({
+            to: email,
+            name: name,
+            timestamp: formattedTime
+        })
+
+        console.log(`✅ Password change email sent to ${userChange.email}`);
+    } catch (error) {
+        console.error("❌ Error processing user change:", error);
+    }
+}
 // Format user details
 function formatUserDetails(user) {
     return {
@@ -281,6 +304,26 @@ ${additionalText}
         from: '"Trade Notifications" <noreply@tradeapp.com>',
         to: to,
         subject: subject,
+        text: emailText,
+    });
+}
+
+async function sendPasswordChangeEmail({ to, name, timestamp }) {
+    const emailText = `
+    Hello ${name},
+
+    This is a confimation that your password for your account was changed at ${timestamp}.
+
+    If you did not make this change, please contact us immediately.
+
+    Thank you, 
+    Game Trading Platform Security Team
+    `;
+
+    await transporter.sendMail({
+        from: '"Account Security" <secutiry@tradeapp.com>',
+        to: to,
+        subject: "Password Changed",
         text: emailText,
     });
 }

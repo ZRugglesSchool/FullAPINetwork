@@ -90,6 +90,16 @@ services:
     networks:
       - myNetwork
 
+  prometheus:
+    build: ./prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus
+    networks:
+      - myNetwork
+
 networks:
   myNetwork:
     driver: bridge

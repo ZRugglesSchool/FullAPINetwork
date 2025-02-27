@@ -1,13 +1,14 @@
 import connectDB from "@/utils/db";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
+import { sendPasswordChangeNotification } from "@/utils/kafkaProducer"; 
 
 
 export default async function handler(req, res) {
     await connectDB();
 
     const { userIdentifier } = req.query; // Can be ID or username
-    const { password, ...updateData } = req.body;
+    const { password, newPassword, ...updateData } = req.body;
 
     try {
         // Try finding by ID first
@@ -43,7 +44,22 @@ export default async function handler(req, res) {
 
         if (req.method === "PUT") {
             const oldUser = { ...user.toObject() }; 
-            const updatedUser = await User.findByIdAndUpdate(user._id, updateData, {new: true});
+            const updatedFields  = { ...updateData };
+
+            let passwordChanged = false;
+            if (newPassword) {
+                const salt = await bcrypt.genSalt(10);
+                updatedFields.password = await bcrypt.hash(newPassword, salt);
+                passwordChanged = true;
+            }
+
+            const updatedUser = await User.findByIdAndUpdate(user._id, updatedFields, {new: true});
+
+            if (passwordChanged) {
+                await sendPasswordChangeNotification(updatedUser);
+            }
+
+
             return res.status(200).json({
                 message: "Updated user",
                 previousData: oldUser,

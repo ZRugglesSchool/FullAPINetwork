@@ -9,10 +9,14 @@ const producer = kafka.producer();
 let isConnected = false;
 
 async function ensureConnection() {
-    if (!isConnected) {
-        await producer.connect();
-        isConnected = true;
-        console.log("✅ Kafka producer connected");
+    try {
+        if (!isConnected) {
+            await producer.connect();
+            isConnected = true;
+            console.log("✅ Kafka producer connected");
+        }
+    } catch (error) {
+        console.error("❌ Error connecting to Kafka producer:", error);
     }
 }
 // Send notification about new trade offer
@@ -46,7 +50,8 @@ async function sendTradeOfferNotification(tradeOffer) {
 async function sendTradeStatusUpdateNotification(tradeOffer, newStatus) {
     try {
         await ensureConnection();
-        
+        console.log("Connected Sending trade status update notification");
+
         // Convert Mongoose document to plain object if needed
         const tradeData = typeof tradeOffer.toObject === 'function' 
             ? tradeOffer.toObject() 
@@ -79,7 +84,34 @@ async function sendTradeStatusUpdateNotification(tradeOffer, newStatus) {
     }
 }
 
+async function sendPasswordChangeNotification(user) {
+    try { 
+        await ensureConnection();
+        
+        // Convert Mongoose document to plain object if needed
+        const userData = typeof user.toObject === 'function' 
+            ? user.toObject() 
+            : user;
+        console.log(userData);
+        await producer.send({
+            topic: "user-changes",
+            messages: [
+                { 
+                    value: JSON.stringify(userData)
+                },
+            ],
+        });
+        
+        console.log(`✅ Password change notification sent for user: ${userData._id}`);
+        return true;
+    } catch (error) {
+        console.error("❌ Error sending password change notification:", error);
+        return false;
+    }
+}
+
 module.exports = {
     sendTradeOfferNotification,
-    sendTradeStatusUpdateNotification
+    sendTradeStatusUpdateNotification,
+    sendPasswordChangeNotification
 };
