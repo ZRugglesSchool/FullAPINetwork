@@ -1,6 +1,21 @@
 const { Kafka } = require("kafkajs");
 const nodemailer = require("nodemailer");
 const { MongoClient, ObjectId } = require("mongodb");
+const express = require("express");
+const metrics = require("./metrics");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/metrics', async (req, res) => {
+    res.set('Content-Type', metrics.register.contentType);
+    res.end(await metrics.register.metrics());
+});
+
+app.listen(PORT, () => {
+    console.log(`✅ Metrics server listening on port ${PORT}`);
+});
+
 
 const kafka = new Kafka({
     clientId: "email-service",
@@ -11,7 +26,7 @@ const consumer = kafka.consumer({ groupId: "email-group" });
 
 // MongoDB setup
 const mongoUri = process.env.MONGO_URI;
-const client = new MongoClient(mongoUri);
+const mongoClient = new MongoClient(mongoUri);
 
 const transporter = nodemailer.createTransport({
     host: "smtp.ethereal.email",
@@ -26,32 +41,60 @@ const transporter = nodemailer.createTransport({
 const run = async () => {
     try {
         await consumer.connect();
-        await client.connect();
+
+        metrics.kafkaConnectionStatus.set(1);
+        console.log("✅ Connected to Kafka");
+
+        await mongoClient.connect();
+        metrics.mongoConnectionStatus.set(1);
         console.log("✅ Connected to MongoDB");
 
         await consumer.subscribe({ topic: "trade-offers", fromBeginning: true });
         await consumer.subscribe({ topic: "trade-status-updates", fromBeginning: true });
         await consumer.subscribe({ topic: "user-changes", fromBeginning: true });
 
-        const db = client.db("gameAPI");
+        const db = mongoClient.db("gameAPI");
         const usersCollection = db.collection("users"); // users collection
         const gamesCollection = db.collection("videogames"); // video games collection
 
         await consumer.run({
             eachMessage: async ({ topic, message }) => {
-                const payload = JSON.parse(message.value.toString());
-                console.log("payload", payload);
-                if (topic === "trade-offers") {
-                    await handleTradeOffer(payload, usersCollection, gamesCollection);
-                } else if (topic === "trade-status-updates") {
-                    await handleStatusUpdate(payload, usersCollection, gamesCollection);
-                } else if (topic === "user-changes") {
-                    await handleUserChanges(payload, usersCollection);
+                const startTime = process.hrtime();
+
+                try {
+                    const payload = JSON.parse(message.value.toString());
+                    console.log("payload", payload);
+
+                    metrics.messagesProcessed.inc({ topic });
+
+                    if (topic === "trade-offers") {
+                        await handleTradeOffer(payload, usersCollection, gamesCollection);
+                    } else if (topic === "trade-status-updates") {
+                        await handleStatusUpdate(payload, usersCollection, gamesCollection);
+                    } else if (topic === "user-changes") {
+                        await handleUserChanges(payload, usersCollection);
+                    }
+
+                    const endTime = process.hrtime(startTime);
+                    const duration = endTime[0] + endTime[1] / 1e9;
+                    metrics.messageProcessingTime.observe({ topic }, duration);
+                } catch (error) {
+                    console.error(`❌ Error processing message from ${topic}:`, error);
+                    metrics.emailErrors.inc({ operation: "messageProcessing", errorType: error.name || 'Unknown' });
                 }
             },
         });
     } catch (error) {
         console.error("❌ Error in Kafka consumer:", error);
+
+        metrics.kafkaConnectionStatus.set(0);
+        metrics.mongoConnectionStatus.set(0);
+        
+        // Increment error counter
+        metrics.emailErrors.inc({ 
+            operation: 'connection', 
+            errorType: error.name || 'Unknown' 
+        });
     }
 };
 
@@ -69,6 +112,10 @@ async function handleTradeOffer(tradeOffer, usersCollection, gamesCollection) {
 
         if (!offererUser || !receiverUser) {
             console.error("❌ Could not find user information");
+            metrics.emailErrors.inc({ 
+                operation: 'fetch_users', 
+                errorType: 'UserNotFound' 
+            });
             return;
         }
 
@@ -98,6 +145,7 @@ async function handleTradeOffer(tradeOffer, usersCollection, gamesCollection) {
             tradeId: _id,
             status
         });
+        metrics.emailsSent.inc({ type: 'trade_offer_receiver' });
 
         // Send email to offerer
         await sendTradeEmail({
@@ -111,10 +159,15 @@ async function handleTradeOffer(tradeOffer, usersCollection, gamesCollection) {
             tradeId: _id,
             status
         });
+        metrics.emailsSent.inc({ type: 'trade_offer_sender' });
 
         console.log(`✅ Trade offer emails sent to ${receiverUser.email} and ${offererUser.email}`);
     } catch (error) {
         console.error("❌ Error processing trade offer:", error);
+        metrics.emailErrors.inc({ 
+            operation: 'trade_offer', 
+            errorType: error.name || 'Unknown' 
+        });
     }
 }
 
@@ -133,6 +186,10 @@ async function handleStatusUpdate(updateData, usersCollection, gamesCollection) 
 
         if (!offererUser || !receiverUser) {
             console.error("❌ Could not find user information");
+            metrics.emailErrors.inc({ 
+                operation: 'fetch_users', 
+                errorType: 'UserNotFound' 
+            });
             return;
         }
 
@@ -165,6 +222,8 @@ async function handleStatusUpdate(updateData, usersCollection, gamesCollection) 
             tradeId,
             status: newStatus
         });
+        metrics.emailsSent.inc({ type: 'status_update_offerer' });
+
 
         // Send email to receiver
         await sendStatusUpdateEmail({
@@ -178,10 +237,16 @@ async function handleStatusUpdate(updateData, usersCollection, gamesCollection) 
             tradeId,
             status: newStatus
         });
+        metrics.emailsSent.inc({ type: 'status_update_receiver' });
+
 
         console.log(`✅ Status update emails sent to ${offererUser.email} and ${receiverUser.email}`);
     } catch (error) {
         console.error("❌ Error processing status update:", error);
+        metrics.emailErrors.inc({ 
+            operation: 'status_update', 
+            errorType: error.name || 'Unknown' 
+        });
     }
 }
 
@@ -198,10 +263,15 @@ async function handleUserChanges(userChange, usersCollection) {
             name: name,
             timestamp: formattedTime
         })
+        metrics.emailsSent.inc({ type: 'password_change' });
 
         console.log(`✅ Password change email sent to ${userChange.email}`);
     } catch (error) {
         console.error("❌ Error processing user change:", error);
+        metrics.emailErrors.inc({ 
+            operation: 'user_change', 
+            errorType: error.name || 'Unknown' 
+        });
     }
 }
 // Format user details
@@ -342,4 +412,23 @@ Condition: ${game.condition}`
 }
 
 
-run().catch(console.error);
+metrics.kafkaConnectionStatus.set(0);
+metrics.mongoConnectionStatus.set(0);
+
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM signal received, closing connections...');
+    await consumer.disconnect();
+    await mongoClient.close();
+    metrics.kafkaConnectionStatus.set(0);
+    metrics.mongoConnectionStatus.set(0);
+    process.exit(0);
+});
+
+run().catch(error => {
+    console.error('❌ Fatal error:', error);
+    metrics.emailErrors.inc({ 
+        operation: 'startup', 
+        errorType: error.name || 'Unknown' 
+    });
+});
