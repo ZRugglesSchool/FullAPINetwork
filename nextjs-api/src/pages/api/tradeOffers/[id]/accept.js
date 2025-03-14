@@ -5,6 +5,7 @@ import VideoGame from "@/models/VideoGame";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import { sendTradeStatusUpdateNotification } from "@/utils/kafkaProducer";
+import { tradeOffersAccepted } from "../../metrics";
 
 export default async function handler(req, res) {
     try {
@@ -127,6 +128,8 @@ export default async function handler(req, res) {
 
             // Send notification for the trade status update
             await sendTradeStatusUpdateNotification(tradeOffer, "accepted");
+
+            tradeOffersAccepted.inc();
 
             return res.status(200).json({ 
                 message: "Trade offer accepted successfully", 

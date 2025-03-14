@@ -1,5 +1,6 @@
 import connectDB from "@/utils/db";
 import User from "@/models/User";
+import { usersCreatedTotal } from "../metrics";
 
 export default async function handler(req, res) {
     if (req.method !== "POST") {
@@ -25,6 +26,8 @@ export default async function handler(req, res) {
         // Create a new user
         const newUser = new User({ name, email, password, street_address });
         await newUser.save();
+
+        usersCreatedTotal.inc();
 
         return res.status(201).json({
             message: "User registered successfully",

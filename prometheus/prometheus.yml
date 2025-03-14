@@ -4,11 +4,11 @@ global:
 scrape_configs:
 - job_name: 'nginx'
   static_configs:
-  - targets: ['nginx:80']
+    - targets: ['nginx-exporter:9113']
 
 - job_name: 'prometheus'
   static_configs:
-  - targets: ['localhost:9090']
+    - targets: ['localhost:9090']
 
 - job_name: 'api1'
   metrics_path: /api/metrics
@@ -18,16 +18,16 @@ scrape_configs:
 - job_name: 'api2'
   metrics_path: /api/metrics
   static_configs:
-  - targets: ['api2:3000']
+    - targets: ['api2:3000']
 
 - job_name: 'email-service'
   static_configs:
-  - targets: ['email-service:3000']
+    - targets: ['email-service:3000']
 
 - job_name: 'mongo'
   static_configs:
-  - targets: ['mongo:27017']
+    - targets: ['mongo-exporter:9216']
 
 - job_name: 'kafka'
   static_configs:
-  - targets: ['kafka:9092']
+    - targets: ['kafka-exporter:9308']

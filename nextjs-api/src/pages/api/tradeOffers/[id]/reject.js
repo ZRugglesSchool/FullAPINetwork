@@ -4,6 +4,7 @@ import User from "@/models/User";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import { sendTradeStatusUpdateNotification } from "@/utils/kafkaProducer";
+import { tradeOffersRejected } from "../../metrics";
 
 export default async function handler(req, res) {
     try {
@@ -98,6 +99,8 @@ export default async function handler(req, res) {
             await tradeOffer.save();
 
             sendTradeStatusUpdateNotification(tradeOffer, "rejected");
+
+            tradeOffersRejected.inc();
 
             return res.status(200).json({ 
                 message: "Trade offer rejected successfully", 

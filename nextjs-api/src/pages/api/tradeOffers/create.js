@@ -4,6 +4,7 @@ import User from "@/models/User";
 import VideoGame from "@/models/VideoGame";
 import mongoose from "mongoose";
 import { sendTradeOfferNotification } from "@/utils/kafkaProducer";
+import { tradeOfferProcessingTime, tradeOffersTotal } from "../metrics";
 
 export default async function handler(req, res) {
     try {
@@ -17,6 +18,8 @@ export default async function handler(req, res) {
 
     if (req.method === "POST") {
         try {
+            const endTimer = tradeOfferProcessingTime.startTimer();
+            
         const { offerer, receiver, offeredGames = [], requestedGames = [] } = req.body;
 
         // Check if required fields are present
@@ -178,7 +181,11 @@ export default async function handler(req, res) {
 
         await tradeOffer.save();
 
+        // Send notification to Kafka
         await sendTradeOfferNotification(tradeOffer);
+
+        endTimer();
+        tradeOffersTotal.inc();
 
         return res.status(201).json({
             message: "Trade offer created successfully",

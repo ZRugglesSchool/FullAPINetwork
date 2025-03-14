@@ -27,6 +27,18 @@ services:
     depends_on:
       - zookeeper
 
+  kafka-exporter:
+    image: danielqsj/kafka-exporter
+    container_name: kafka-exporter
+    ports:
+      - "9308:9308"
+    environment:
+      - KAFKA_SERVER=kafka:9092
+    networks:
+      - myNetwork
+    depends_on:
+      - kafka
+
   api1:
     build: ./nextjs-api
     container_name: api1
@@ -66,6 +78,7 @@ services:
       - ETHEREAL_USER=kim.collins@ethereal.email
       - ETHEREAL_PASS=gQZnGXn7ag57995Cx5
     depends_on:
+      - mongo
       - kafka
 
   mongo:
@@ -76,6 +89,17 @@ services:
     networks:
       - myNetwork
 
+  mongo-exporter:
+    image: bitnami/mongodb-exporter:latest
+    container_name: mongo-exporter
+    ports:
+      - "9216:9216"
+    networks:
+      - myNetwork
+    depends_on:
+      - mongo
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017
 
   nginx:
     build: ./nginx
@@ -90,6 +114,19 @@ services:
     networks:
       - myNetwork
 
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx-exporter
+    command:
+      - "-nginx.scrape-uri=http://nginx/nginx_status"
+    ports:
+      - "9113:9113"
+    networks:
+      - myNetwork
+    depends_on:
+      - nginx
+
+
   prometheus:
     build: ./prometheus
     container_name: prometheus
@@ -99,6 +136,16 @@ services:
       - ./prometheus:/etc/prometheus
     networks:
       - myNetwork
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - myNetwork
+    depends_on:
+      - prometheus
 
 networks:
   myNetwork:

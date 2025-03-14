@@ -2,6 +2,7 @@ import connectDB from "@/utils/db";
 import VideoGame from "@/models/VideoGame";
 import User from "@/models/User";
 import mongoose from "mongoose";
+import { gamesCreatedTotal } from "../metrics";
 
 export default async function handler(req, res) {
     try {
@@ -94,6 +95,8 @@ export default async function handler(req, res) {
             
             throw saveError;
         }
+
+        gamesCreatedTotal.inc();
 
         return res.status(201).json({
             message: "Video game created successfully",
