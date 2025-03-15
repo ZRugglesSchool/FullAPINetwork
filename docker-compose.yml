@@ -89,6 +89,14 @@ services:
     networks:
       - myNetwork
 
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - myNetwork
+
   mongo-exporter:
     image: bitnami/mongodb-exporter:latest
     container_name: mongo-exporter

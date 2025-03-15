@@ -1,8 +1,13 @@
 import connectDB from "@/utils/db";
+import Redis from "ioredis";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
 import { sendPasswordChangeNotification } from "@/utils/kafkaProducer"; 
 
+const redis = new Redis({
+    host: "redis",
+    port: 6379
+});
 
 export default async function handler(req, res) {
     await connectDB();
@@ -11,6 +16,7 @@ export default async function handler(req, res) {
     const { password, newPassword, ...updateData } = req.body;
 
     try {
+        
         // Try finding by ID first
         let user = await User.findOne({ name: userIdentifier });
 
@@ -23,9 +29,20 @@ export default async function handler(req, res) {
         if (!user) {
         return res.status(404).json({ message: "User not found" });
         }
+        
+        
 
         if (req.method === "GET") {
-        return res.status(200).json(user);
+
+            const cachedUser = await redis.get(`user:${userIdentifier}`);
+            if (cachedUser) {
+                return res.status(200).json({message: "redis", data:JSON.parse(cachedUser)});
+            }
+    
+            await redis.set(`user:${user._id}`, JSON.stringify(user), "EX", 3600);
+            await redis.set(`user:${user.name}`, JSON.stringify(user), "EX", 3600);
+
+            return res.status(200).json({message: "normal", data: user});
         } 
         
 
@@ -59,6 +76,9 @@ export default async function handler(req, res) {
                 await sendPasswordChangeNotification(updatedUser);
             }
 
+            await redis.set(`user:${updatedUser._id}`, JSON.stringify(updatedUser), "EX", 3600);
+            await redis.set(`user:${updatedUser.name}`, JSON.stringify(updatedUser), "EX", 3600);
+            await redis.del(`user:${user.name}`);
 
             return res.status(200).json({
                 message: "Updated user",
@@ -69,6 +89,10 @@ export default async function handler(req, res) {
         
         if (req.method === "DELETE") {
         await User.findByIdAndDelete(user._id);
+
+        await redis.del(`user:${user._id}`);
+        await redis.del(`user:${user.name}`);
+
         return res.status(200).json({ message: "User "+ user.name +" deleted" });
         }
 
